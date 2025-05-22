@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geometry Dash Style Level Editor</title>
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: white;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #editorContainer {
+            flex: 4;
+            overflow: auto;
+            position: relative;
+        }
+        #editorCanvas {
+            border: 2px solid #fff;
+            background-color: #333;
+            display: block;
+            margin: auto;
+        }
+        #menu {
+            flex: 1;
+            display: flex;
+            justify-content: flex-start;
+            align-items: stretch;
+            background-color: #444;
+            padding: 0;
+            border-top: 2px solid #fff;
+            min-height: 130px;
+        }
+        .tabs-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            height: 100%;
+            width: 600px;
+            background-color: #333;
+            border-right: 2px solid #222;
+        }
+        .tab-bar {
+            display: flex;
+            background-color: #222;
+        }
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            color: #ccc;
+            padding: 12px 0;
+            cursor: pointer;
+            font-size: 16px;
+            border-bottom: 3px solid transparent;
+            transition: background 0.2s, color 0.2s, border-bottom 0.2s;
+        }
+        .tab-btn.selected {
+            color: #fff;
+            background-color: #444;
+            border-bottom: 3px solid #0ff;
+        }
+        .tab-content {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 10px 8px;
+            gap: 12px;
+            min-height: 78px;
+            background: #333;
+        }
+        .tab-content img {
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: border 0.2s;
+        }
+        .tab-content img.selected {
+            border: 2px solid #fff;
+        }
+        .tab-content button {
+            padding: 10px 20px;
+            background-color: #555;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            min-width: 80px;
+        }
+        .tab-content button:hover {
+            background-color: #666;
+        }
+        .tab-content button.delete-active, .tab-content #deleteButton.delete-active {
+            background-color: #c22;
+            color: #fff;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        #playtestExitBtn {
+            display: none;
+            position: absolute;
+            right: 24px;
+            top: 24px;
+            z-index: 10;
+            background: #222;
+            color: #fff;
+            border: 2px solid #fff;
+            border-radius: 5px;
+            font-size: 18px;
+            padding: 8px 24px;
+            cursor: pointer;
+        }
+        #playtestExitBtn:hover {
+            background: #0ff;
+            color: #222;
+            border-color: #0ff;
+        }
+        #levelCompleteBanner {
+            display: none;
+            position: absolute;
+            left: 50%;
+            top: 60px;
+            transform: translateX(-50%);
+            background: #0f0;
+            color: #222;
+            border: 3px solid #fff;
+            border-radius: 10px;
+            font-size: 32px;
+            font-weight: bold;
+            z-index: 100;
+            padding: 20px 50px;
+            box-shadow: 0 4px 24px #222a;
+        }
+    </style>
+</head>
+<body>
+    <div id="editorContainer" style="position:relative;">
+        <canvas id="editorCanvas" width="1600" height="640"></canvas>
+        <button id="playtestExitBtn">Exit Playtest</button>
+        <div id="levelCompleteBanner">Level Complete!</div>
+    </div>
+    <div id="menu">
+        <div class="tabs-container">
+            <div class="tab-bar">
+                <button class="tab-btn selected" data-tab="blocks">Blocks</button>
+                <button class="tab-btn" data-tab="hazards">Hazards</button>
+                <button class="tab-btn" data-tab="triggers">Triggers</button>
+                <button class="tab-btn" data-tab="tools">Tools</button>
+            </div>
+            <div class="tab-content" id="tab-blocks">
+                <img src="assets/block.png" alt="Block" id="blockTool" class="tool" data-type="block">
+            </div>
+            <div class="tab-content" id="tab-hazards" style="display:none">
+                <img src="assets/spike.png" alt="Spike" id="spikeTool" class="tool" data-type="spike">
+            </div>
+            <div class="tab-content" id="tab-triggers" style="display:none">
+                <img src="assets/trigger.png" alt="Trigger" id="triggerTool" class="tool" data-type="trigger">
+                <img src="assets/startpos.png" alt="Start Position" id="startPosTool" class="tool" data-type="startpos" title="Start Position">
+            </div>
+            <div class="tab-content" id="tab-tools" style="display:none">
+                <button id="zoomIn">Zoom In</button>
+                <button id="zoomOut">Zoom Out</button>
+                <button id="exportLevel">Export Level</button>
+                <button id="importLevel">Import Level</button>
+                <button id="deleteButton">Delete</button>
+                <button id="clearCanvas">Clear</button>
+                <button id="playtestButton" style="background: #0ff; color: #222;"><b>Playtest</b></button>
+                <input type="file" id="fileInput" accept=".cbr,.json">
+            </div>
+        </div>
+    </div>
+    <script>
+        // --- Tabs ---
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabBlocks = document.getElementById('tab-blocks');
+        const tabHazards = document.getElementById('tab-hazards');
+        const tabTriggers = document.getElementById('tab-triggers');
+        const tabTools = document.getElementById('tab-tools');
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                tabBlocks.style.display = 'none';
+                tabHazards.style.display = 'none';
+                tabTriggers.style.display = 'none';
+                tabTools.style.display = 'none';
+                if (btn.dataset.tab === "blocks") {
+                    tabBlocks.style.display = '';
+                } else if (btn.dataset.tab === "hazards") {
+                    tabHazards.style.display = '';
+                } else if (btn.dataset.tab === "triggers") {
+                    tabTriggers.style.display = '';
+                } else if (btn.dataset.tab === "tools") {
+                    tabTools.style.display = '';
+                }
+            });
+        });
+
+        // --- Editor Logic ---
+        const canvas = document.getElementById('editorCanvas');
+        const ctx = canvas.getContext('2d');
+        const blockTool = document.getElementById('blockTool');
+        const spikeTool = document.getElementById('spikeTool');
+        const triggerTool = document.getElementById('triggerTool');
+        const startPosTool = document.getElementById('startPosTool');
+        const zoomInButton = document.getElementById('zoomIn');
+        const zoomOutButton = document.getElementById('zoomOut');
+        const exportLevelButton = document.getElementById('exportLevel');
+        const importLevelButton = document.getElementById('importLevel');
+        const deleteButton = document.getElementById('deleteButton');
+        const clearCanvasButton = document.getElementById('clearCanvas');
+        const playtestButton = document.getElementById('playtestButton');
+        const fileInput = document.getElementById('fileInput');
+        const playtestExitBtn = document.getElementById('playtestExitBtn');
+        const levelCompleteBanner = document.getElementById('levelCompleteBanner');
+        const gridSize = 40;
+        let selectedTool = null;
+        let deleteMode = false;
+        const placedObjects = [];
+        let selectedObjectIndex = null;
+
+        // Playtest state
+        let playtestActive = false;
+        let player = null;
+        let playtestCamX = 0;
+        let playtestAnimReq = null;
+        let playtestCompleted = false;
+
+        // GROUND LOGIC
+        const groundBlocks = 4;
+        const groundY = canvas.height - gridSize * groundBlocks; // Top of ground
+
+        // Tool selection for all images in tool tabs
+        function setupToolSelection() {
+            document.querySelectorAll('.tool').forEach(tool => {
+                tool.addEventListener('click', () => {
+                    if (tool.classList.contains('selected')) {
+                        tool.classList.remove('selected');
+                        selectedTool = null;
+                    } else {
+                        document.querySelectorAll('.tool').forEach(t => t.classList.remove('selected'));
+                        tool.classList.add('selected');
+                        selectedTool = tool.dataset.type;
+                    }
+                    selectedObjectIndex = null;
+                    deleteMode = false;
+                    deleteButton.classList.remove('delete-active');
+                    drawObjects();
+                });
+            });
+        }
+        setupToolSelection();
+
+        // Delete mode toggle
+        deleteButton.addEventListener('click', () => {
+            deleteMode = !deleteMode;
+            if (deleteMode) {
+                document.querySelectorAll('.tool').forEach(t => t.classList.remove('selected'));
+                selectedTool = null;
+                deleteButton.classList.add('delete-active');
+            } else {
+                deleteButton.classList.remove('delete-active');
+            }
+            selectedObjectIndex = null;
+            drawObjects();
+        });
+
+        function findObjectAt(x, y) {
+            for (let i = placedObjects.length - 1; i >= 0; i--) {
+                const obj = placedObjects[i];
+                if (obj.x === x && obj.y === y) {
+                    return i;
+                }
+            }
+            return null;
+        }
+
+        // Mouse event helpers for drag-to-delete
+        let isDragging = false;
+        let dragVisited = new Set();
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (deleteMode && !playtestActive) {
+                isDragging = true;
+                dragVisited.clear();
+                processDeleteEvent(e);
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (deleteMode && !playtestActive) {
+                isDragging = false;
+                dragVisited.clear();
+            }
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (deleteMode && !playtestActive) {
+                isDragging = false;
+                dragVisited.clear();
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (deleteMode && isDragging && !playtestActive) {
+                processDeleteEvent(e);
+            }
+        });
+
+        canvas.addEventListener('click', (e) => {
+            if (playtestActive) return;
+            if (deleteMode) {
+                processDeleteEvent(e);
+            } else if (!selectedTool) {
+                const { x, y } = getEventGridPos(e);
+                selectedObjectIndex = findObjectAt(x, y);
+                drawObjects();
+            } else if (selectedTool) {
+                const { x, y } = getEventGridPos(e);
+                if (selectedTool === 'startpos') {
+                    // Remove any previous startpos
+                    for (let i = placedObjects.length - 1; i >= 0; i--) {
+                        if (placedObjects[i].type === 'startpos') {
+                            placedObjects.splice(i, 1);
+                        }
+                    }
+                    placedObjects.push({ type: 'startpos', x, y });
+                } else {
+                    placedObjects.push({ type: selectedTool, x, y });
+                }
+                selectedObjectIndex = null;
+                drawObjects();
+            }
+        });
+
+        function processDeleteEvent(e) {
+            const { x, y } = getEventGridPos(e);
+            const key = `${x},${y}`;
+            if (!dragVisited.has(key)) {
+                dragVisited.add(key);
+                const idx = findObjectAt(x, y);
+                if (idx !== null) {
+                    placedObjects.splice(idx, 1);
+                    drawObjects();
+                }
+            }
+        }
+
+        function getEventGridPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x = Math.floor((e.clientX - rect.left) * scaleX / gridSize) * gridSize;
+            const y = Math.floor((e.clientY - rect.top) * scaleY / gridSize) * gridSize;
+            return { x, y };
+        }
+
+        // Deselect on ESC
+        window.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") {
+                if (playtestActive) {
+                    stopPlaytest();
+                } else {
+                    selectedObjectIndex = null;
+                    deleteMode = false;
+                    deleteButton.classList.remove('delete-active');
+                    drawObjects();
+                }
+            }
+        });
+
+        function drawObjects() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawGrid();
+
+            // Draw ground gradient (4 blocks from bottom, FLIPPED so dark is at the top)
+            let grad = ctx.createLinearGradient(0, groundY, 0, canvas.height);
+            grad.addColorStop(0, "rgba(0,0,0,1.0)");
+            grad.addColorStop(0.72, "rgba(24,24,24,0.7)");
+            grad.addColorStop(1, "rgba(20,20,20,0.0)");
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, groundY, canvas.width, gridSize * groundBlocks);
+
+            placedObjects.forEach((obj, idx) => {
+                if (obj.type === 'block') {
+                    ctx.fillStyle = idx === selectedObjectIndex ? '#0ff' : '#000';
+                    ctx.fillRect(obj.x, obj.y, gridSize, gridSize);
+                } else if (obj.type === 'spike') {
+                    ctx.fillStyle = idx === selectedObjectIndex ? '#0ff' : '#000';
+                    ctx.beginPath();
+                    ctx.moveTo(obj.x, obj.y + gridSize);
+                    ctx.lineTo(obj.x + gridSize / 2, obj.y);
+                    ctx.lineTo(obj.x + gridSize, obj.y + gridSize);
+                    ctx.closePath();
+                    ctx.fill();
+                } else if (obj.type === 'trigger') {
+                    ctx.fillStyle = idx === selectedObjectIndex ? '#ff0' : '#ff0';
+                    ctx.beginPath();
+                    ctx.arc(obj.x + gridSize / 2, obj.y + gridSize / 2, gridSize / 2 - 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else if (obj.type === 'startpos') {
+                    ctx.fillStyle = '#0f0';
+                    ctx.beginPath();
+                    ctx.arc(obj.x + gridSize / 2, obj.y + gridSize / 2, gridSize / 2 - 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    ctx.fillStyle = "#fff";
+                    ctx.beginPath();
+                    ctx.moveTo(obj.x + gridSize/2 - 7, obj.y + gridSize/2 - 12);
+                    ctx.lineTo(obj.x + gridSize/2 - 7, obj.y + gridSize/2 + 12);
+                    ctx.lineTo(obj.x + gridSize/2 + 13, obj.y + gridSize/2);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                if (idx === selectedObjectIndex) {
+                    ctx.strokeStyle = '#0ff';
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(obj.x, obj.y, gridSize, gridSize);
+                }
+            });
+
+            // Draw playtest player if playtestActive
+            if (playtestActive && player) {
+                ctx.save();
+                ctx.translate(-playtestCamX, 0);
+                ctx.fillStyle = "#0ff";
+                ctx.fillRect(player.x, player.y, player.size, player.size);
+                ctx.strokeStyle = "#fff";
+                ctx.strokeRect(player.x, player.y, player.size, player.size);
+                ctx.restore();
+            }
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            for (let x = 0; x <= canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y <= canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        zoomInButton.addEventListener('click', () => {
+            // Optional: implement zoom logic if needed
+        });
+        zoomOutButton.addEventListener('click', () => {
+            // Optional: implement zoom logic if needed
+        });
+
+        clearCanvasButton.addEventListener('click', () => {
+            placedObjects.length = 0;
+            selectedObjectIndex = null;
+            drawObjects();
+        });
+
+        // --- EXPORT/IMPORT CODE ---
+
+        exportLevelButton.addEventListener('click', () => {
+            const data = JSON.stringify(placedObjects, null, 2);
+            const blob = new Blob([data], {type: "application/json"});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = "level.cbr";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+
+        importLevelButton.addEventListener('click', () => {
+            fileInput.value = "";
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported)) {
+                        placedObjects.length = 0;
+                        imported.forEach(obj => {
+                            if (
+                                (obj.type === 'block' || obj.type === 'spike' || obj.type === 'trigger' || obj.type === 'startpos') &&
+                                typeof obj.x === 'number' &&
+                                typeof obj.y === 'number'
+                            ) {
+                                placedObjects.push(obj);
+                            }
+                        });
+                        selectedObjectIndex = null;
+                        drawObjects();
+                    } else {
+                        alert("Invalid .cbr file format.");
+                    }
+                } catch (err) {
+                    alert("Failed to import level: " + err);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // --- Playtest logic (no overlay, block spawns on layout) ---
+        playtestButton.addEventListener('click', () => {
+            if (playtestActive) return;
+            playtestActive = true;
+            playtestCompleted = false;
+            playtestExitBtn.style.display = 'block';
+            levelCompleteBanner.style.display = 'none';
+            startPlaytest();
+        });
+        playtestExitBtn.addEventListener('click', stopPlaytest);
+
+        function stopPlaytest() {
+            playtestActive = false;
+            playtestCompleted = false;
+            playtestExitBtn.style.display = 'none';
+            levelCompleteBanner.style.display = 'none';
+            cancelAnimationFrame(playtestAnimReq);
+            player = null;
+            drawObjects();
+        }
+
+        function startPlaytest() {
+            // Find "startpos" trigger if it exists (by type "startpos")
+            let startX = 60, startY = groundY - gridSize; // Default is just above ground
+            for (const obj of placedObjects) {
+                if (obj.type === "startpos") {
+                    startX = obj.x;
+                    startY = obj.y;
+                    break;
+                }
+            }
+            player = {
+                x: startX,
+                y: startY,
+                size: gridSize,
+                vy: 0,
+                onGround: false
+            };
+            playtestCamX = 0; // Start camera at 0 so player starts at left edge
+            let gravity = 1.1;
+            let jumpPower = 17;
+            let speed = 8;
+            let running = true;
+
+            function resetPlayer() {
+                player.x = startX;
+                player.y = startY;
+                player.vy = 0;
+                player.onGround = false;
+                playtestCamX = 0;
+            }
+
+            function checkCollisionRect(ax, ay, aw, ah, bx, by, bw, bh) {
+                return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+            }
+
+            function checkOnGround() {
+                // Ground at groundY
+                if(player.y + player.size >= groundY){
+                    player.y = groundY - player.size;
+                    return true;
+                }
+                for(let obj of placedObjects){
+                    if(obj.type==="block"){
+                        if(
+                            player.y + player.size <= obj.y + 8 &&
+                            player.y + player.size >= obj.y - 12 &&
+                            player.x + player.size > obj.x &&
+                            player.x < obj.x + gridSize
+                        ){
+                            player.y = obj.y - player.size;
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
+            function checkDead() {
+                for(let obj of placedObjects){
+                    if(obj.type==="spike"){
+                        if(checkCollisionRect(player.x,player.y,player.size,player.size, obj.x, obj.y, gridSize, gridSize)){
+                            return true;
+                        }
+                    }
+                    if(obj.type==="block"){
+                        if(checkCollisionRect(player.x,player.y,player.size,player.size, obj.x, obj.y, gridSize, gridSize)){
+                            if(!(player.y + player.size <= obj.y + 6)){
+                                return true;
+                            }
+                        }
+                    }
+                }
+                if(player.y > canvas.height){
+                    return true;
+                }
+                return false;
+            }
+
+            function step() {
+                if(!playtestActive || !running) return;
+
+                player.x += speed;
+                player.vy += gravity;
+                player.y += player.vy;
+                if(checkOnGround()){
+                    player.vy = 0;
+                    player.onGround = true;
+                }else{
+                    player.onGround = false;
+                }
+                // Improved horizontal collision with blocks
+                for(let obj of placedObjects){
+                    if(obj.type==="block"){
+                        // Axis-Aligned Bounding Box collision
+                        if (
+                            player.x + player.size > obj.x &&
+                            player.x < obj.x + gridSize &&
+                            player.y + player.size > obj.y+2 &&
+                            player.y < obj.y + gridSize - 2
+                        ) {
+                            // Is player coming from left?
+                            if (player.x + player.size - speed <= obj.x) {
+                                player.x = obj.x - player.size;
+                            }
+                            // Is player coming from right?
+                            else if (player.x - speed >= obj.x + gridSize) {
+                                player.x = obj.x + gridSize;
+                            }
+                            // Otherwise, just push out to the closest edge
+                            else {
+                                if (player.x + player.size/2 < obj.x + gridSize/2) {
+                                    player.x = obj.x - player.size;
+                                } else {
+                                    player.x = obj.x + gridSize;
+                                }
+                            }
+                        }
+                    }
+                }
+                // Clamp to left edge of level
+                if (player.x < 0) player.x = 0;
+
+                playtestCamX = player.x - 120;
+                if(playtestCamX < 0) playtestCamX = 0;
+                drawObjects();
+
+                if(checkDead()){
+                    running = false;
+                    setTimeout(()=>{
+                        resetPlayer();
+                        running = true;
+                        playtestAnimReq = requestAnimationFrame(step);
+                    }, 700);
+                    return;
+                }
+
+                playtestAnimReq = requestAnimationFrame(step);
+            }
+
+            function handleJump(e) {
+                if(!playtestActive) return;
+                if((e.code === "Space" || e.code === "ArrowUp" || e.key==="w") && player.onGround){
+                    player.vy = -jumpPower;
+                    player.onGround = false;
+                }
+            }
+            function handleReset(e) {
+                if(!playtestActive) return;
+                if(e.key==="r"){
+                    resetPlayer();
+                }
+            }
+            window.addEventListener('keydown', handleJump);
+            window.addEventListener('keydown', handleReset);
+
+            function cleanupPlaytest() {
+                window.removeEventListener('keydown', handleJump);
+                window.removeEventListener('keydown', handleReset);
+                cancelAnimationFrame(playtestAnimReq);
+                player = null;
+                drawObjects();
+            }
+            playtestExitBtn.onclick = () => {
+                stopPlaytest();
+                cleanupPlaytest();
+            };
+            window.addEventListener('keydown', function escListener(e) {
+                if (!playtestActive) return;
+                if (e.key === "Escape") {
+                    stopPlaytest();
+                    cleanupPlaytest();
+                }
+            });
+
+            resetPlayer();
+            drawObjects();
+            running = true;
+            playtestAnimReq = requestAnimationFrame(step);
+        }
+
+        drawObjects();
+    </script>
+</body>
+</html>
